@@ -185,13 +185,14 @@ void RED_PWM_Handler(void){
 */
 void GREEN_PWM_Handler(void){
     if(GREEN_PWM_ON){
-
-        TMR1 = 65280 + (255 - GREEN_LED_PWM_value);
+        TMR1H = 0xFF;
+        TMR1L = 255 - GREEN_LED_PWM_value;
 
         GREEN_LED_STRIP_PORT = 1;
         GREEN_PWM_ON = 0;
     }else{
-        TMR1 = 65280 + GREEN_LED_PWM_value;   
+        TMR1H = 0xFF;
+        TMR1L = GREEN_LED_PWM_value;   
 
         GREEN_LED_STRIP_PORT = 0;
         GREEN_PWM_ON = 1;
