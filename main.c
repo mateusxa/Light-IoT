@@ -1,7 +1,8 @@
 /*
  * File:   main.c
  * Author: mateus
- *
+ * Microcontroller: PIC16F628A
+ * IDE and Compiler: MPLABX and XC8
  * Created on November 28, 2021, 6:42 PM
  */
 
@@ -36,8 +37,6 @@
 
 /*------------------------------------------------------------------------------------------------------------------------------------------*/
 
-#define TMR0_TOP_VALUE                          250
-
 /********************************************************************************************************************************************/
 
 uint8_t RED_LED_PWM_value = 0;
@@ -60,7 +59,7 @@ void TIMER2_configuration(void);                                                
 
 void RED_PWM_Handler(void);
 void GREEN_PWM_Handler(void);
-
+void BLUE_PWM_Handler(void);
 /********************************************************************************************************************************************/
 
 void __interrupt () my_isr_routine(void) {
@@ -72,6 +71,11 @@ void __interrupt () my_isr_routine(void) {
     if(PIE1bits.TMR1IE == 1 && PIR1bits.TMR1IF){
         GREEN_PWM_Handler();
         PIR1bits.TMR1IF = 0;
+    }
+
+    if(PIE1bits.TMR2IE == 1 && PIR1bits.TMR2IF){
+        BLUE_PWM_Handler();
+        PIR1bits.TMR2IF = 0;
     }
 }
 
@@ -87,6 +91,7 @@ void main(void) {
 
         RED_LED_PWM_value = RED_LED_PWM_value + 20;
         GREEN_LED_PWM_value = GREEN_LED_PWM_value + 20;
+        BLUE_LED_PWM_value = BLUE_LED_PWM_value + 20;
         __delay_ms(500);
         
     }
@@ -104,6 +109,8 @@ void MCU_configuration(void){
     GPIO_configuration();
     TIMER0_configuration();
     TIMER1_configuration();
+    TIMER2_configuration();
+    
     INTCONbits.PEIE = 1;                                                        // Enable Peripheral interrupts
     INTCONbits.GIE = 1;                                                         // Enable Global Interrupts
 }
@@ -140,7 +147,7 @@ void GPIO_configuration(void){
 void TIMER0_configuration(void){
     OPTION_REGbits.T0CS = 0;                                                    // Select TMR0 clock source to internal instruction cycle
     OPTION_REGbits.PSA = 0;                                                     // Assign Prescaler to Timer 0
-    OPTION_REGbits.PS = 0x02;                                                   // Set Prescaler to 1:2
+    OPTION_REGbits.PS = 0x03;                                                   // Set Prescaler to 1:2
 
     INTCONbits.T0IE = 1;                                                        // Enable Timer 0 interrupt
     // prescaler 16 top value 250
@@ -163,19 +170,33 @@ void TIMER1_configuration(void){
 
 /*------------------------------------------------------------------------------------------------------------------------------------------*/
 /*
+    @brief Configure Timer 1 with 2 prescaler
+*/
+void TIMER2_configuration(void){
+    T2CONbits.TOUTPS = 0x00;                                                    // 1:2 postscaler
+    T2CONbits.T2CKPS = 0x02;                                                    // No prescaler
+    T2CONbits.TMR2ON = 1;                                                       // Enable Timer 2
+ 
+    PIE1bits.TMR2IE = 1;                                                        // Enable Timer 2 interrupt
+    PIR1bits.TMR2IF = 0;                                                        // Reset Interrupt Flag
+}
+
+
+/*------------------------------------------------------------------------------------------------------------------------------------------*/
+/*
     @brief RED PWM routine
 */
 void RED_PWM_Handler(void){
-    if(RED_PWM_ON){
-        TMR0 = 255 - RED_LED_PWM_value;
+    if(RED_PWM_ON){                                                             // Check if it's duty cycle HIGH
+        TMR0 = 255 - RED_LED_PWM_value;                                         // Set PWM on time
 
-        RED_LED_STRIP_PORT = 1;
-        RED_PWM_ON = 0;
+        RED_LED_STRIP_PORT = 1;                                                 // Turn on LED
+        RED_PWM_ON = 0;                                                         // Flag next Overflow a duty cycle LOW
     }else{
-        TMR0 = RED_LED_PWM_value;   
+        TMR0 = RED_LED_PWM_value;                                               // Set PWM off time
 
-        RED_LED_STRIP_PORT = 0;
-        RED_PWM_ON = 1;
+        RED_LED_STRIP_PORT = 0;                                                 // Turn off LED
+        RED_PWM_ON = 1;                                                         // Flag next overrflow a duty cycle HIGH
     }
 }
 
@@ -184,17 +205,35 @@ void RED_PWM_Handler(void){
     @brief GREEN PWM routine
 */
 void GREEN_PWM_Handler(void){
-    if(GREEN_PWM_ON){
-        TMR1H = 0xFF;
-        TMR1L = 255 - GREEN_LED_PWM_value;
+    if(GREEN_PWM_ON){                                                           // Check if it's duty cycle HIGH
+        TMR1H = 0xFF;                                                           // Turn TMR1 in 8 bit timer
+        TMR1L = 255 - GREEN_LED_PWM_value;                                      // Set PWM on time
 
-        GREEN_LED_STRIP_PORT = 1;
-        GREEN_PWM_ON = 0;
+        GREEN_LED_STRIP_PORT = 1;                                               // Turn on LED
+        GREEN_PWM_ON = 0;                                                       // Flag next Overflow a duty cycle LOW
     }else{
-        TMR1H = 0xFF;
-        TMR1L = GREEN_LED_PWM_value;   
+        TMR1H = 0xFF;                                                           // Turn TMR1 in 8 bit timer
+        TMR1L = GREEN_LED_PWM_value;                                            // Turn off LED
 
-        GREEN_LED_STRIP_PORT = 0;
+        GREEN_LED_STRIP_PORT = 0;                                               // Flag next overrflow a duty cycle HIGH
         GREEN_PWM_ON = 1;
+    }
+}
+
+/*------------------------------------------------------------------------------------------------------------------------------------------*/
+/*
+    @brief BLUE PWM routine
+*/
+void BLUE_PWM_Handler(void){
+    if(BLUE_PWM_ON){                                                             // Check if it's duty cycle HIGH
+        TMR2 = 255 - BLUE_LED_PWM_value;                                         // Set PWM on time
+
+        BLUE_LED_STRIP_PORT = 1;                                                 // Turn on LED
+        BLUE_PWM_ON = 0;                                                         // Flag next Overflow a duty cycle LOW
+    }else{
+        TMR2 = BLUE_LED_PWM_value;                                               // Set PWM off time
+
+        BLUE_LED_STRIP_PORT = 0;                                                 // Turn off LED
+        BLUE_PWM_ON = 1;                                                         // Flag next overrflow a duty cycle HIGH
     }
 }
