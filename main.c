@@ -35,31 +35,49 @@
 #define BLUE_LED_PORT                           PORTAbits.RA7
 #define BLUE_BUTTON_PORT                        PORTBbits.RB5
 
+#define LIGHT_BULB_TRIS                         TRISAbits.TRISA3
+#define LIGHT_BULB_PORT                         PORTAbits.RA3
+
+#define BAUDRATE                                9600 // bps
+#define MAX_RX_BUFFER_INDEX_VALUE               50
+
 /*------------------------------------------------------------------------------------------------------------------------------------------*/
 
 /********************************************************************************************************************************************/
 
-uint8_t RED_LED_PWM_value = 0;
+uint8_t RED_LED_PWM_value = 128;
 uint8_t RED_PWM_ON;
 
-uint8_t GREEN_LED_PWM_value = 0;
+uint8_t GREEN_LED_PWM_value = 128;
 uint8_t GREEN_PWM_ON;
 
-uint8_t BLUE_LED_PWM_value = 0;
+uint8_t BLUE_LED_PWM_value = 128;
 uint8_t BLUE_PWM_ON;
+
+uint8_t Received_Byte = 0;
+char Com_Init = 0;
+char Com_Conf = 0;
+char Com_Index = 0;
+char Com_Received = 0;
+uint8_t RX_Buffer[4];
 
 /********************************************************************************************************************************************/
 
 void MCU_configuration(void);                                                   // Microcontroller configuration
 void GPIO_configuration(void);                                                  // GPIO configuration
+void UART_configuration(void);                                                  // UART configuration
 void TIMER0_configuration(void);                                                // 
 void TIMER1_configuration(void);                                                // 
 void TIMER2_configuration(void);                                                // 
 
+void UART_write(uint8_t value);
 
 void RED_PWM_Handler(void);
 void GREEN_PWM_Handler(void);
 void BLUE_PWM_Handler(void);
+
+void RX_Buffer_Watcher(void);
+void Clear_Buffer(void);
 /********************************************************************************************************************************************/
 
 void __interrupt () my_isr_routine(void) {
@@ -77,6 +95,35 @@ void __interrupt () my_isr_routine(void) {
         BLUE_PWM_Handler();
         PIR1bits.TMR2IF = 0;
     }
+
+    if(RCIF){
+        RCIF = 0;
+        if(OERR){
+            CREN = 0;
+            CREN = 1;
+            asm("retfie");
+            Com_Init = 0;
+            Com_Conf = 0;
+            Com_Index = 0;
+        }
+        Received_Byte = RCREG;
+
+        if(Com_Init){
+            if(Com_Conf){
+                RX_Buffer[Com_Index] = Received_Byte;
+                Com_Index++;
+                if(Com_Index > 3){
+                    Com_Init = 0;
+                    Com_Conf = 0;
+                    Com_Index = 0;
+                    Com_Received = 1;
+                }
+            }else if(Received_Byte == 0x79)
+                Com_Conf = 1;
+        }else if(Received_Byte == 0x72)
+            Com_Init = 1;
+
+    }
 }
 
 /********************************************************************************************************************************************/
@@ -89,10 +136,20 @@ void main(void) {
 
     while(1){
 
-        RED_LED_PWM_value = RED_LED_PWM_value + 20;
-        GREEN_LED_PWM_value = GREEN_LED_PWM_value + 20;
-        BLUE_LED_PWM_value = BLUE_LED_PWM_value + 20;
-        __delay_ms(500);
+       if(Com_Received){
+           RED_LED_PWM_value = RX_Buffer[0];
+           GREEN_LED_PWM_value = RX_Buffer[1];
+           BLUE_LED_PWM_value = RX_Buffer[2];
+           if(RX_Buffer[3] == 0x31){
+               GREEN_LED_PORT = 1;
+           }else{
+               GREEN_LED_PORT = 0;
+           }
+            for(int i = 0; i < 4; i++){
+                RX_Buffer[i] = 0;
+            }
+            Com_Received = 0;
+        }
         
     }
 
@@ -110,7 +167,7 @@ void MCU_configuration(void){
     TIMER0_configuration();
     TIMER1_configuration();
     TIMER2_configuration();
-    
+    UART_configuration();
     INTCONbits.PEIE = 1;                                                        // Enable Peripheral interrupts
     INTCONbits.GIE = 1;                                                         // Enable Global Interrupts
 }
@@ -137,6 +194,7 @@ void GPIO_configuration(void){
     BLUE_LED_TRIS = 0;                                                          // BLUE LED is a output
     BLUE_BUTTON_TRIS = 1;                                                       // BLUE BUTTON is a input
     
+    GREEN_LED_PORT = 0;
     
 }
 
@@ -181,6 +239,36 @@ void TIMER2_configuration(void){
     PIR1bits.TMR2IF = 0;                                                        // Reset Interrupt Flag
 }
 
+/*------------------------------------------------------------------------------------------------------------------------------------------*/
+/*
+    @brief Configure Timer 1 with 2 prescaler
+*/
+void UART_configuration(void){
+    TRISB2 = 0; //TX Pin
+    TRISB1 = 1; // RX Pin
+
+    SPBRG = ((_XTAL_FREQ/16)/BAUDRATE) - 1;
+    BRGH = 1; // Fast Baudrate
+    SYNC = 0; // Asynchronous
+    SPEN = 1; // Enable Serial port pins
+    CREN = 1; // Enable reception
+    SREN = 0; // No effect
+    TXIE = 0; // Disable tx interrutps
+    RCIE = 1; // Enable RX interrupts
+    TX9 = 0; // 8 bits transmission
+    RX9 = 0;    // 8 bits reception
+    TXEN = 0;   //Reset Transmitter
+    TXEN = 1;   //Enable Transmission
+}
+
+/*------------------------------------------------------------------------------------------------------------------------------------------*/
+/*
+    @brief Configure Timer 1 with 2 prescaler
+*/
+void UART_write(uint8_t value){
+    while(!TXIF); //wait previous transmission to finish
+    TXREG = value;
+}
 
 /*------------------------------------------------------------------------------------------------------------------------------------------*/
 /*
